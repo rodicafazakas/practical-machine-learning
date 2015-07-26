@@ -1,0 +1,113 @@
+---
+title: "Personal Activity Report"
+author: "Rodica Fazakas"
+date: "Sunday, July 26, 2015"
+output: html_document
+---
+
+
+
+## Part 1
+
+In this section we process the data available for this project, we fit a predictive model using Random Forest algorithm and we measure its performance. 
+
+## Data Preparation
+
+First, we download the training and the test data for this project and clean them by dropping those variables which have missing observations and a couple of other non relevant variables. We are left with a training dataset containing 19,622 observations and 53 variables and a test set with 20 observations and 53 variables.  
+
+```{r}
+library(caret)
+library(randomForest)
+library(rpart)
+library(rpart.plot)
+
+set.seed(100000)
+
+# Get the data
+setInternet2(TRUE)  # set the R_WIN_INTERNET2 to TRUE
+download.file('https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv','pml-training.csv')
+download.file('https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv','pml-test.csv' )
+
+training <- read.csv('pml-training.csv', na.strings=c("NA","#DIV/0!", ""))
+testing  <- read.csv('pml-test.csv' , na.strings=c("NA", "#DIV/0!", ""))
+
+# Clean the data
+training <- training[, colSums(is.na(training)) == 0]
+classe <- training$classe
+trainout <- grepl("^X|timestamp|window", names(training))
+training <- training[, !trainout]
+newtraining <- training[, sapply(training, is.numeric)]
+newtraining$classe <- classe
+
+testing <- testing[, colSums(is.na(testing)) ==0 ]
+testout <- grepl("^X|timestamp|window", names(testing))
+testing <- testing[, !testout]
+newtesting <- testing[, sapply(testing, is.numeric)]
+```
+
+## Partition the data
+
+We divide the data into 60% training and 40% testing sets. We obtain a training set of 11,776 observations and a validation set of 7,846 observations.  
+
+```{r}
+# Partition the data
+inTrain <- createDataPartition(y=newtraining$classe, p=0.6, list=FALSE)
+myTraining <- newtraining[inTrain,]
+myTesting <- newtraining[-inTrain,]
+```
+
+# Data Modelling
+
+We use Random Forest algorithm to fit a predictive model for exercising. We use 5-fold cross validation when applying the algorithm. We find that the most important variables in predicting the manner of exercising, as captured bt the variable "classe" are roll-belt, yaw-belt and magnet-dumbbell-z". 
+
+```{r}
+# Data Modelling
+ctrl <- trainControl(method = "cv", 5)
+modrf <- train(classe ~ ., data=myTraining, method="rf", trControl=ctrl)
+modrf
+
+plot(varImp(modrf))
+```
+
+
+Then we predict this modeling on the validation data set. We find the accuracy of the prediction model to be 99.2% and the out-of-sample error to be 0.77%.
+
+
+```{r}
+# Estimate the model on the validation test
+predictRf <- predict(modrf, myTesting)
+confusionMatrix(myTesting$classe, predictRf)
+
+accuracy <- postResample(predictRf, myTesting$classe)
+accuracy
+
+error <- 1 - as.numeric(confusionMatrix(myTesting$classe, predictRf)$overall[1])
+error
+```
+
+## Part 2
+
+In this section we apply the model to the original testing data set.
+
+```{r}
+predict2 <- predict(modrf, newtesting[, -length(names(newtesting))], type = "raw")
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+pml_write_files(predict2)
+```
+
+
+## Appendix
+
+```{r}
+# Decision Tree Vizualization
+treeModel <- rpart(classe ~ ., data=myTraining, method="class")
+prp(treeModel)
+```
+
+
